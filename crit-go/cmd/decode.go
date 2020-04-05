@@ -1,60 +1,46 @@
+/*
+Copyright © 2020 NAME HERE <EMAIL ADDRESS>
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 package cmd
 
 import (
-	"bufio"
-	"crit-go/gocrit"
-	//"errors"
 	"fmt"
+
 	"github.com/spf13/cobra"
-	"os"
 )
 
 // decodeCmd represents the decode command
 var decodeCmd = &cobra.Command{
 	Use:   "decode",
 	Short: "Convert Binary to Json",
-	Long:  ``,
-	/*
-		Args: func(cmd *cobra.Command, args []string) error {
-			if len(args) < 1 {
-				return errors.New("requires atleast one -i argument with image")
-			}
-			return nil
-		},
-	*/
-	Run: func(cmd *cobra.Command, args []string) {
-		if inloc == "" {
-			reader := bufio.NewReader(os.Stdin)
-			stdininp, err := reader.ReadString('\n')
-			gocrit.check(err)
-			/*
-				if err != nil {
-					fmt.Fprintln(os.Stderr, err)
-				}
-			*/
-			err = gocrit.Decode(stdininp, outloc, pretty)
-			/*
-				if err != nil {
-					fmt.Println(err)
-				}
-			*/
-			gocrit.check(err)
-		} else {
-			err := gocrit.Decode(inloc, outloc, pretty)
-			gocrit.check(err)
-		}
-	},
+	Long: ``,
+	Run: func(cmd *cobra.Command, args []string) error {
+    	if len(args) < 1 {
+      		return errors.New("requires a -i argument with image")
+    	}
+		Decode(args []string)
+	}
 }
 
-var inloc, outloc string
-var pretty bool
 
 func init() {
+	rootCmd.AddCommand(decodeCmd)
+	decodeCmd.Flags().String("in", "i", "", 'criu image in binary format to be decoded (stdin by default)')
+	decodeCmd.Flags().Bool("pretty", "p", false, 'Multiline with indents and some numerical fields in field-specific format')
 
-	//rootCmd.AddCommand(decodeCmd)
-	decodeCmd.Flags().StringVarP(&inloc, "in", "i", "", "criu image in binary format to be decoded (stdin by default)")
-	decodeCmd.Flags().StringVarP(&outloc, "out", "o", "", "where to put the image in json format(Stdout by default)")
-	decodeCmd.Flags().BoolVarP(&pretty, "pretty", "p", false, "Multiline with indents and some numerical fields in field-specific format")
+
 
 	// Here you will define your flags and configuration settings.
 

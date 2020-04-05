@@ -1,54 +1,45 @@
+/*
+Copyright © 2020 NAME HERE <EMAIL ADDRESS>
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 package cmd
 
 import (
-	"crit-go/gocrit"
-	//"errors"
-	"flag"
 	"fmt"
+
 	"github.com/spf13/cobra"
-	//"os"
 )
 
 // xCmd represents the x command
 var xCmd = &cobra.Command{
 	Use:   "x",
-	Short: "Explore image dir",
-	Long:  `Explore image dir with option such as ps,fds,mems,rss`,
-	/*
-		Args: func(cmd *cobra.Command, args []string) error {
-			if len(args) < 2 {
-				return errors.New("requires a x argument with image and another option such as ps,fds,mems,rss")
-			}
-			return nil
-		},
-	*/
-	Run: func(cmd *cobra.Command, args []string) {
-		err := gocrit.Explore(dir, what)
-		if err != nil
-		gocrit.check(err)
-	},
+	Short: "Explore image dir" ,
+	Long: `Explore image dir with option such as ps,fds,mems,rss`,
+	Run: func(cmd *cobra.Command, args []string) error {
+    	if len(args) < 2 {
+      		return errors.New("requires a x argument with image and another option such as ps,fds,mems,rss")
+    	}
+		Explore(args []string)
+	}
 }
 
-var dir, what string
-
 func init() {
-	// rootCmd.AddCommand(xCmd)
-	xCmd.Flags().StringVarP(&dir, "dir", "", "", "location/or the image")
-	xCmd.MarkFlagRequired("dir")
-	/*
-		lastVal := &LastFlag{}
-		flag.Var(lastVal, "flag", "takes last value given")
-		//os.Args = []string{"exename", "-flag", "ps", "-flag", "fds", "-flag", "mems", "-flag", "-rss"}
-
-		//fmt.Println("Final value:", lastVal.String())
-
-		//args := os.Args[1:]
-	*/
-	xCmd.Flags().BoolVarP(&what, "what", "", "", "choose between {ps,fss,mems,rss}")
-	xCmd.MarkFlagRequired("what")
-	//xCmd.Flags().BoolP("fds", "", false, "file directory structure of image")
-	//xCmd.Flags().BoolP("mems", "", false, "memory map of the image")
-
+	rootCmd.AddCommand(xCmd)
+	xCmd.Flags().Bool("dir", "", "")
+	xCmd.Flags().Bool("ps", "", false, 'process structure of image')
+	xCmd.Flags().Bool("fds", "", false, 'file directory structure of image')
+	xCmd.Flags().Bool("mems", "", false, 'memory map of the image')	
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command
