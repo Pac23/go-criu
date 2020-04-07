@@ -4,27 +4,28 @@ import (
 	"fmt"
 	"github.com/spf13/cobra"
 	"os"
-
-	homedir "github.com/mitchellh/go-homedir"
-	"github.com/spf13/viper"
+	//homedir "github.com/mitchellh/go-homedir"
+	//"github.com/spf13/viper"
 )
 
-var cfgFile string
+var inloc, outloc, dir, what, cfgFile string
+var pretty bool
 
 // rootCmd represents the base command when called without any subcommands
 
-
 var rootCmd = &cobra.Command{
-	Use:   "crit",
-	Short: "CRIT is a feature-rich replacement for existing "criu show".",
+	Use:   "crit-go",
+	Short: "CRIT is a feature-rich replacement for existing criu show",
 	Long: `CRIT is a feature-rich replacement for existing "criu show". 
 	This version is written in Go for usage with Go codebase, crit is also available in python
 	for more information visit https://criu.org/CRIT `,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	//	Run: func(cmd *cobra.Command, args []string) { },
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println("crit executed")
+	},
 }
-
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
@@ -46,23 +47,25 @@ func Execute() {
 
 func init() {
 	rootCmd.AddCommand(decodeCmd)
+	rootCmd.AddCommand(encodeCmd)
+	rootCmd.AddCommand(infoCmd)
+	rootCmd.AddCommand(showCmd)
+	rootCmd.AddCommand(xCmd)
+	//cobra.OnInitialize(initConfig)
 
-	
-		cobra.OnInitialize(initConfig)
+	// Here you will define your flags and configuration settings.
+	// Cobra supports persistent flags, which, if defined here,
+	// will be global for your application.
 
-		// Here you will define your flags and configuration settings.
-		// Cobra supports persistent flags, which, if defined here,
-		// will be global for your application.
+	//rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.crit-go.yaml)")
 
-		rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.crit-go.yaml)")
-
-		// Cobra also supports local flags, which will only run
-		// when this action is called directly.
-		rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	// Cobra also supports local flags, which will only run
+	// when this action is called directly.
+	//rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
-
 // initConfig reads in config file and ENV variables if set.
+/*
 func initConfig() {
 	if cfgFile != "" {
 		// Use config file from the flag.
@@ -87,3 +90,4 @@ func initConfig() {
 		fmt.Println("Using config file:", viper.ConfigFileUsed())
 	}
 }
+*/
