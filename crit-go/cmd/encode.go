@@ -1,8 +1,11 @@
 package cmd
 
 import (
-	"fmt"
-
+	//"fmt"
+	"bufio"
+	"crit-go/gocrit"
+	"os"
+	//"errors"
 	"github.com/spf13/cobra"
 )
 
@@ -10,19 +13,24 @@ import (
 var encodeCmd = &cobra.Command{
 	Use:   "encode",
 	Short: "Convert Json To Binary",
-	Long: ``,
-	Run: func(cmd *cobra.Command, args []string) error {
-    	if len(args) < 1 {
-      		return errors.New("requires a -i argument with image")
-    	}
-		Encode(args []string)
-	}
+	Long: `Converts the Json file to Binary and writes to given location for
+	more info visit https://www.criu.org/CRIT#Functionality`,
+	Run: func(cmd *cobra.Command, args []string) {
+		if inloc == "" {
+			reader := bufio.NewReader(os.Stdin)
+			stdininp, err := reader.ReadString('\n')
+			gocrit.Check(err)
+			gocrit.Encode(stdininp, outloc)
+		} else {
+			gocrit.Encode(inloc, outloc)
+		}
+	},
 }
 
 func init() {
-	rootCmd.AddCommand(encodeCmd)
-	encodeCmd.Flags().StringP("in", "i", "", 'criu image in binary format to be decoded (stdin by default)')
-	encodeCmd.Flags().StringP("out", "o", "", 'output loc of the file')
+	//rootCmd.AddCommand(encodeCmd)
+	encodeCmd.Flags().StringVarP(&inloc, "in", "i", "", "criu image in binary format to be decoded (stdin by default)")
+	encodeCmd.Flags().StringVarP(&outloc, "out", "o", "", "output loc of the file")
 
 	// Here you will define your flags and configuration settings.
 
