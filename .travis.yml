@@ -3,9 +3,9 @@ sudo: required
 os:
   - linux
 go:
-  - "1.8"
-  - "1.9"
-  - "1.10"
+  - "1.14.x"
+  - "1.13.x"
+  - tip
 env:
   # Run the tests with CRIU master and criu-dev
   - CRIU_BRANCH="master"
@@ -23,3 +23,9 @@ script:
   - make build phaul test/test test/phaul test/piggie
   # Run actual test as root as it uses CRIU.
   - sudo make test phaul-test
+  # This builds crit-go
+  - cd crit-go
+  - cd magic-gen
+  - make build magicgen
+  # Run test of crit-go
+  - sudo make test 
