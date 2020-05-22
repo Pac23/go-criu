@@ -12,26 +12,42 @@ endif
 all: build test magicgen
 
 lint: 
-	@golint magic_gen.go
+	@golint magic-gen.go
 
 build:
 	 @$(GO) build -v
 
 test/magicgen:
-	@rm -f testmagic.json 
-	@$(GO) run magic_gen.go magic.h testmagic.json
+	test_input=`mktemp`
+	test_output=`mktemp`
+	echo "#define TEST_MAGIC 0x12345678" > test_input
+	@rm -f test_output 
+	@$(GO) run magic-gen.go test_input test_output
+	cmp samplemagic test_output
+	if [ $$? -eq 0 ]; then \
+		echo PASS; \
+		exit 0; \
+	else \
+		echo FAIL; \
+		exit 1; \
+	fi
+	@rm -f test_input
+	@rm -f test_output
+
 
 test: test/magicgen
 		
-magicgen:
-	go run magic_gen.go magic.h magic.json
+magicgen: build
+	curl -s https://raw.githubusercontent.com/checkpoint-restore/criu/criu-dev/criu/include/magic.h -o magic.h
+	./magic-gen magic.h magic.json
+	@rm -f magic.h
 
 install.tools:
 	if [ ! -x "$(GOBIN)/golint" ]; then \
-		$(GO) get -u go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.27.0; \
+		$(GO) get -u golang.org/x/lint/golint; \
 	fi
 
 clean:
-	@rm -f testmagic.json
+	@rm -f test_output
 
 .PHONY: build test clean lint magicgen
