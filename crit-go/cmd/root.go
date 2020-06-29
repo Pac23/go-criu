@@ -9,7 +9,7 @@ import (
 )
 
 var inloc, outloc, dir, what, cfgFile string
-var pretty bool
+var pretty, nopl bool
 
 // rootCmd represents the base command when called without any subcommands
 
