@@ -64,11 +64,11 @@ func inf(inloc string) *os.File {
 	} else {
 		imgfile, err := os.Open(inloc)
 		/*
-		defer func() {
-			if err := imgfile.Close(); err != nil {
-				Check(err)
-			}
-		}()
+			defer func() {
+				if err := imgfile.Close(); err != nil {
+					Check(err)
+				}
+			}()
 		*/
 		if err != nil {
 			fmt.Println("Failed to open input file: %s", err)
