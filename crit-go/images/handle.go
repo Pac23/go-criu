@@ -88,6 +88,27 @@ func (m *entry_handler) Load(f *os.File, pretty bool, nopl bool) []keyvalue {
   return entries
 }
 
+func (m *entry_handler) Dump(jsonmap map[string]interface{}, f *os.File) {
+  /*
+     Generic function to Convert criu image entries from dict(json)
+     format to binary.Takes a list of entries and a file-like object
+     to write entries in binary format to.
+  */
+  // Do not change this,Below bool used with generic proto parsing struct
+  load := false
+  for _, entry := range jsonmap["entries"].([]interface{}) {
+    internalbmap, err := json.Marshal(entry)
+    entr, err := protohandler(m.m, load, internalbmap)
+    checkfile(err, f)
+    bs := make([]byte, 4)
+    binary.LittleEndian.PutUint32(bs, uint32(len(entr)))
+    _, err = f.Write(bs)
+    checkfile(err, f)
+    _, err = f.Write(entr)
+    checkfile(err, f)
+  }
+}
+
 func (m *ghost_file_handler) Load(f *os.File, pretty bool, nopl bool) []keyvalue {
   /*
      Convert criu image entries from binary format to dict(json).
@@ -159,14 +180,6 @@ func (m *ghost_file_handler) Load(f *os.File, pretty bool, nopl bool) []keyvalue
       if nopl == true {
         f.Seek(int64(gc_prot.GetLen()), 1)
       } else {
-        /*
-           internalrbuffer := make([]byte, gc_prot.GetLen())
-           _, err := f.Read(internalrbuffer)
-           checkfile(err, f)
-           b := make([]byte, base64.StdEncoding.DecodedLen(len(internalrbuffer)))
-           _, err = base64.StdEncoding.Decode(b, internalrbuffer)
-           entry["extra"] = b
-        */
         extradatabuf := make([]byte, gc_prot.GetLen())
         n, err := f.Read(extradatabuf)
         if err != nil {
@@ -200,6 +213,73 @@ func (m *ghost_file_handler) Load(f *os.File, pretty bool, nopl bool) []keyvalue
   return entries
 }
 
+func (m *ghost_file_handler) Dump(jsonmap map[string]interface{}, f *os.File) {
+  var jpb []byte
+  protobinding := &protobindings.GhostFileEntry{}
+  for i, entry := range jsonmap["entries"].([]interface{}) {
+    if i == 1 {
+      break
+    }
+    internalbmap, err := json.Marshal(entry)
+    jsonm := &jsonpb.Unmarshaler{}
+    r := bytes.NewReader(internalbmap)
+    err = jsonm.Unmarshal(r, protobinding)
+    if err != nil {
+      fmt.Println(err)
+    }
+    jpb, err = proto.Marshal(protobinding)
+    if err != nil {
+      fmt.Println("Failed to Marshal protobinding,check magic or file a github issue")
+      f.Close()
+      os.Exit(1)
+    }
+    bs := make([]byte, 4)
+    binary.LittleEndian.PutUint32(bs, uint32(len(jpb)))
+    _, err = f.Write(bs)
+    checkfile(err, f)
+    _, err = f.Write(jpb)
+    checkfile(err, f)
+  }
+
+  if protobinding.GetChunks() == true {
+    gc_prot := &protobindings.GhostChunkEntry{}
+    for _, entry := range jsonmap["entries"].([]interface{}) {
+      enty := entry.(map[string]interface{})
+      internalbmap, err := json.Marshal(entry)
+      jsonm := &jsonpb.Unmarshaler{}
+      r := bytes.NewReader(internalbmap)
+      err = jsonm.Unmarshal(r, gc_prot)
+      if err != nil {
+        fmt.Println(err)
+      }
+      jpb, err = proto.Marshal(gc_prot)
+      if err != nil {
+        fmt.Println("Failed to Marshal protobinding,check magic or file a github issue")
+        f.Close()
+        os.Exit(1)
+      }
+      bs := make([]byte, len(jpb))
+      binary.LittleEndian.PutUint32(bs, uint32(len(jpb)))
+      _, err = f.Write(bs)
+      checkfile(err, f)
+      _, err = f.Write(jpb)
+      checkfile(err, f)
+      dcsdata, err := base64.StdEncoding.DecodeString(enty["extra"].(string))
+      f.Write(dcsdata)
+    }
+  } else {
+    for i, entry := range jsonmap["entries"].([]interface{}) {
+      if i == 1 {
+        break
+      }
+      enty := entry.(map[string]interface{})
+      dcsdata, err := base64.StdEncoding.DecodeString(enty["extra"].(string))
+      f.Write(dcsdata)
+      checkfile(err, f)
+    }
+  }
+}
+
 func (m *pagemap_handler) Load(f *os.File, pretty bool, nopl bool) []keyvalue {
   /*
      Convert criu image entries from binary format to dict(json).
@@ -208,7 +288,6 @@ func (m *pagemap_handler) Load(f *os.File, pretty bool, nopl bool) []keyvalue {
   */
   readbuffer := make([]byte, 4)
   var entries []keyvalue
-  //var gentry map[string]interface{}
   i := 0
   for {
     var entry map[string]interface{}
@@ -235,7 +314,6 @@ func (m *pagemap_handler) Load(f *os.File, pretty bool, nopl bool) []keyvalue {
       if err != nil {
         fmt.Println(err)
       }
-      //jpb := entr.Bytes()
       if err := json.Unmarshal(entr.Bytes(), &entry); err != nil {
         checkfile(err, f)
       }
@@ -250,17 +328,66 @@ func (m *pagemap_handler) Load(f *os.File, pretty bool, nopl bool) []keyvalue {
       if err != nil {
         fmt.Println(err)
       }
-      //jpb := entr.Bytes()
       if err := json.Unmarshal(entr.Bytes(), &entry); err != nil {
         checkfile(err, f)
       }
     }
     entries = append(entries, entry)
     i = i + 1
-    //protobinding := &protobindings.PagemapEntry{}
   }
   return entries
 }
+
+func (x *pagemap_handler) Dump(jsonmap map[string]interface{}, f *os.File) {
+  /*
+     Special dump handler for pagemap.img, which is unique in a way
+     that it has a header of pagemap_head type followed by entries
+     of pagemap_entry type.
+  */
+  var jpb []byte
+  i := 0
+  for _, entry := range jsonmap["entries"].([]interface{}) {
+    internalbmap, err := json.Marshal(entry)
+    if i < 1 {
+      protobinding := &protobindings.PagemapHead{}
+      jsonm := &jsonpb.Unmarshaler{}
+      r := bytes.NewReader(internalbmap)
+      err = jsonm.Unmarshal(r, protobinding)
+      if err != nil {
+        fmt.Println(err)
+      }
+      jpb, err = proto.Marshal(protobinding)
+      if err != nil {
+        fmt.Println("Failed to Marshal protobinding,check magic or file a github issue")
+        f.Close()
+        os.Exit(1)
+      }
+    } else {
+      protobinding := &protobindings.PagemapEntry{}
+      jsonm := &jsonpb.Unmarshaler{}
+      r := bytes.NewReader(internalbmap)
+      err = jsonm.Unmarshal(r, protobinding)
+      if err != nil {
+        fmt.Println(err)
+      }
+      jpb, err = proto.Marshal(protobinding)
+      if err != nil {
+        fmt.Println("Failed to Marshal protobinding,check magic or file a github issue")
+        f.Close()
+        os.Exit(1)
+      }
+    }
+    bs := make([]byte, 4)
+    binary.LittleEndian.PutUint32(bs, uint32(len(jpb)))
+    _, err = f.Write(bs)
+    checkfile(err, f)
+    _, err = f.Write(jpb)
+    checkfile(err, f)
+    i++
+  }
+  f.Close()
+}
+
 func (x *sk_queues_extra_handler) Load(f *os.File, pretty bool, nopl bool) []keyvalue {
   /*
      Convert criu image entries from binary format to dict(json).
@@ -323,14 +450,6 @@ func (x *sk_queues_extra_handler) Load(f *os.File, pretty bool, nopl bool) []key
       humanredaeble := fmt.Sprintf("....< %s >", hreadable(int32(protobinding.GetLength())))
       entry["extra"] = humanredaeble
     } else {
-      /*
-         size := protobinding.GetLength()
-         internalpbuffer := make([]byte, size)
-         n, err = f.Read(internalpbuffer)
-         checkfile(err, f)
-         str := base64.StdEncoding.EncodeToString(internalpbuffer)
-         entry["extra"] = str
-      */
       extradatabuf := make([]byte, protobinding.GetLength())
       n, err := f.Read(extradatabuf)
       if err != nil {
@@ -350,6 +469,39 @@ func (x *sk_queues_extra_handler) Load(f *os.File, pretty bool, nopl bool) []key
   return entries
 }
 
+func (x *sk_queues_extra_handler) Dump(jsonmap map[string]interface{}, f *os.File) {
+  /*
+     Convert criu image entries from dict(json) format to binary.
+     Takes a list of entries and a file-like object to write entries
+     in binary format to.
+  */
+  protobinding := &protobindings.SkPacketEntry{}
+  for _, entry := range jsonmap["entries"].([]interface{}) {
+    internalbmap, err := json.Marshal(entry)
+    jsonm := &jsonpb.Unmarshaler{}
+    r := bytes.NewReader(internalbmap)
+    err = jsonm.Unmarshal(r, protobinding)
+    if err != nil {
+      fmt.Println(err)
+    }
+    entr, err := proto.Marshal(protobinding)
+    if err != nil {
+      fmt.Println("Failed to Marshal protobinding,check magic or file a github issue")
+    }
+    checkfile(err, f)
+    bs := make([]byte, len(entr))
+    binary.LittleEndian.PutUint32(bs, uint32(len(entr)))
+    _, err = f.Write(bs)
+    checkfile(err, f)
+    _, err = f.Write(entr)
+    checkfile(err, f)
+    enty := entry.(map[string]interface{})
+    dcsdata, err := base64.StdEncoding.DecodeString(enty["extra"].(string))
+    f.Write(dcsdata)
+    checkfile(err, f)
+  }
+  f.Close()
+}
 
 func (m *ipc_sem_set_handler) Load(f *os.File, pretty bool, nopl bool) []keyvalue {
   /*
@@ -429,8 +581,69 @@ func (m *ipc_sem_set_handler) Load(f *os.File, pretty bool, nopl bool) []keyvalu
   return entries
 }
 
+func (m *ipc_sem_set_handler) Dump(jsonmap map[string]interface{}, f *os.File) {
+  protobinding := &protobindings.IpcSemEntry{}
+  for _, entry := range jsonmap["entries"].([]interface{}) {
+    internalbmap, err := json.Marshal(entry)
+    jsonu := &jsonpb.Unmarshaler{}
+    r := bytes.NewReader(internalbmap)
+    err = jsonu.Unmarshal(r, protobinding)
+    if err != nil {
+      fmt.Println(err)
+    }
+    entr, err := proto.Marshal(protobinding)
+    if err != nil {
+      fmt.Println("Failed to Marshal protobinding,check magic or file a github issue")
+    }
+    checkfile(err, f)
+    bs := make([]byte, 4)
+    binary.LittleEndian.PutUint32(bs, uint32(len(entr)))
+    _, err = f.Write(bs)
+    checkfile(err, f)
+    _, err = f.Write(entr)
+    checkfile(err, f)
+    enty := entry.(map[string]interface{})
+    size := enty["nsems"]
+    var cleansize uint32
     /*
+       Type switch helps in maintaining cross compatibility
+       between files generated in python and go version of crit
+       python version generates strings,go version doesn not
+       for certain data.
     */
+    switch v := size.(type) {
+    case float64:
+      cleansize = sizeof_u16 * uint32(size.(float64))
+    case string:
+      cs, err := strconv.ParseUint(size.(string), 10, 32)
+      checkfile(err, f)
+      cleansize = sizeof_u16 * uint32(cs)
+    default:
+      fmt.Printf("Unknown type,contact the dev %T!\n", v)
+    }
+    rounded := roundup(cleansize, sizeof_u64)
+    var s []uint32
+    if len(enty["extra"].([]interface{})) != int(enty["nsems"].(float64)) {
+      fmt.Println("Number of semaphores mismatch")
+      f.Close()
+      os.Exit(1)
+    } else {
+      for _, number := range enty["extra"].([]interface{}) {
+        s = append(s, uint32(number.(float64)))
+        bs = make([]byte, 2)
+        binary.LittleEndian.PutUint16(bs, uint16(number.(float64)))
+        f.Write(bs)
+      }
+      zerowrite := rounded - cleansize
+      for z := 0; z < int(zerowrite); z++ {
+        _, err = f.Write([]byte{0})
+        checkfile(err, f)
+      }
+    }
+  }
+  f.Close()
+}
+
 func (m *ipc_msg_queue_handler) Load(f *os.File, pretty bool, nopl bool) []keyvalue {
   /*
      Convert criu image entries from binary format to dict(json).
@@ -531,8 +744,6 @@ func (m *ipc_msg_queue_handler) Load(f *os.File, pretty bool, nopl bool) []keyva
           checkfile(err, f)
         }
         rounded := roundup(*msg_pb.Msize, sizeof_u64)
-        //internaldata := make([]byte, int32(*msg_pb.Msize))
-        //n, err = f.Read(internaldata)
         extradatabuf := make([]byte, int32(*msg_pb.Msize))
         n, err := f.Read(extradatabuf)
         if err != nil {
@@ -563,6 +774,69 @@ func (m *ipc_msg_queue_handler) Load(f *os.File, pretty bool, nopl bool) []keyva
     entries = append(entries, entry)
   }
   return entries
+}
+
+func (m *ipc_msg_queue_handler) Dump(jsonmap map[string]interface{}, f *os.File) {
+  /*
+     Convert criu image entries from dict(json) format to binary.
+     Takes a list of entries and a file-like object to write entries
+     in binary format to.
+  */
+  protobinding := &protobindings.IpcMsgEntry{}
+  for _, entry := range jsonmap["entries"].([]interface{}) {
+    internalbmap, err := json.Marshal(entry)
+    jsonm := &jsonpb.Unmarshaler{}
+    r := bytes.NewReader(internalbmap)
+    err = jsonm.Unmarshal(r, protobinding)
+    if err != nil {
+      fmt.Println(err)
+    }
+    entr, err := proto.Marshal(protobinding)
+    if err != nil {
+      fmt.Println("Failed to Marshal protobinding,check magic or file a github issue")
+    }
+    checkfile(err, f)
+    bs := make([]byte, 4)
+    binary.LittleEndian.PutUint32(bs, uint32(len(entr)))
+    _, err = f.Write(bs)
+    checkfile(err, f)
+    _, err = f.Write(entr)
+    checkfile(err, f)
+    enty := entry.(map[string]interface{})
+    extradata := enty["extra"].([]interface{})
+    msg_pb := &protobindings.IpcMsg{}
+    for i := 0; i < len(enty["extra"].([]interface{})); i++ {
+      internalbmap, err := json.Marshal(extradata[i])
+      r := bytes.NewReader(internalbmap)
+      err = jsonm.Unmarshal(r, msg_pb)
+      if err != nil {
+        fmt.Println(err)
+      }
+      entr, err := proto.Marshal(msg_pb)
+      if err != nil {
+        fmt.Println("Failed to Serialize extra data to protobinding,check magic or file a github issue")
+        checkfile(err, f)
+      }
+      size := len(entr)
+      bs := make([]byte, 4)
+      binary.LittleEndian.PutUint32(bs, uint32(size))
+      _, err = f.Write(bs)
+      checkfile(err, f)
+      _, err = f.Write(entr)
+      checkfile(err, f)
+      rounded := roundup(*msg_pb.Msize, sizeof_u64)
+      dcsdata, err := base64.StdEncoding.DecodeString(extradata[i+1].(string))
+      checkfile(err, f)
+      _, err = f.Write(dcsdata[:*msg_pb.Msize])
+      checkfile(err, f)
+      zerowrite := rounded - *msg_pb.Msize
+      for z := 0; z < int(zerowrite); z++ {
+        _, err = f.Write([]byte{0})
+        checkfile(err, f)
+      }
+      i = i + 1
+    }
+  }
 }
 
 func (m *ipc_shm_set_handler) Load(f *os.File, pretty bool, nopl bool) []keyvalue {
@@ -642,11 +916,68 @@ func (m *ipc_shm_set_handler) Load(f *os.File, pretty bool, nopl bool) []keyvalu
   }
   return entries
 }
+
+func (m *ipc_shm_set_handler) Dump(jsonmap map[string]interface{}, f *os.File) {
+  protobinding := &protobindings.IpcShmEntry{}
+  for _, entry := range jsonmap["entries"].([]interface{}) {
+    internalbmap, err := json.Marshal(entry)
+    jsonu := &jsonpb.Unmarshaler{}
+    r := bytes.NewReader(internalbmap)
+    err = jsonu.Unmarshal(r, protobinding)
+    if err != nil {
+      fmt.Println(err)
+    }
+    entr, err := proto.Marshal(protobinding)
+    if err != nil {
+      fmt.Println("Failed to Marshal protobinding,check magic or file a github issue")
+    }
+    checkfile(err, f)
+    bs := make([]byte, 4)
+    binary.LittleEndian.PutUint32(bs, uint32(len(entr)))
+    _, err = f.Write(bs)
+    checkfile(err, f)
+    _, err = f.Write(entr)
+    checkfile(err, f)
+    enty := entry.(map[string]interface{})
+    size := enty["size"]
+    var cleansize uint32
+    /*
+       Type switch helps in maintaining cross compatibility
+       between files generated in python and go version of crit
+       python version generates strings,go version doesn not
+       for certain data.
+    */
+    switch v := size.(type) {
+    case float64:
+      cleansize = uint32(size.(float64))
+    case string:
+      cs, err := strconv.ParseUint(size.(string), 10, 32)
+      checkfile(err, f)
+      cleansize = uint32(cs)
+    default:
+      fmt.Printf("Type error,file a issue on GitHub %T!\n", v)
+    }
+    rounded := roundup(cleansize, sizeof_u64)
+    dcsdata, err := base64.StdEncoding.DecodeString(enty["extra"].(string))
+    checkfile(err, f)
+    if cleansize < uint32(len(dcsdata)) {
+      _, err = f.Write(dcsdata[:cleansize])
+      checkfile(err, f)
+    } else {
+      _, err = f.Write(dcsdata)
+      checkfile(err, f)
+    }
+    zerowrite := rounded - cleansize
+    emptybyte := make([]byte, zerowrite)
+    _, err = f.Write(emptybyte)
+    checkfile(err, f)
+  }
+  f.Close()
+}
+
 func (x *pipes_data_extra_handler) Load(f *os.File, pretty bool, nopl bool) []keyvalue {
   readbuffer := make([]byte, 4)
-  // r := bufio.NewReader(f)
   var entries []keyvalue
-  //var entr []byte
   for {
     var entry map[string]interface{}
     n, err := f.Read(readbuffer)
@@ -698,12 +1029,6 @@ func (x *pipes_data_extra_handler) Load(f *os.File, pretty bool, nopl bool) []ke
       humanredaeble := fmt.Sprintf("....< %s >", hreadable(int32(protobinding.GetBytes())))
       entry["extra"] = humanredaeble
     } else {
-      /*
-         size := protobinding.GetBytes()
-         internalpbuffer := make([]byte, size)
-         n, err = f.Read(internalpbuffer)
-         str := base64.StdEncoding.EncodeToString(internalpbuffer)
-      */
       extradatabuf := make([]byte, protobinding.GetBytes())
       n, err = f.Read(extradatabuf)
       if err != nil {
@@ -722,6 +1047,40 @@ func (x *pipes_data_extra_handler) Load(f *os.File, pretty bool, nopl bool) []ke
   }
   return entries
 }
+
+func (x *pipes_data_extra_handler) Dump(jsonmap map[string]interface{}, f *os.File) {
+  /*
+     Convert criu image entries from dict(json) format to binary.
+     Takes a list of entries and a file-like object to write entries
+     in binary format to.
+  */
+  protobinding := &protobindings.PipeDataEntry{}
+  for _, entry := range jsonmap["entries"].([]interface{}) {
+    internalbmap, err := json.Marshal(entry)
+    jsonm := &jsonpb.Unmarshaler{}
+    r := bytes.NewReader(internalbmap)
+    err = jsonm.Unmarshal(r, protobinding)
+    if err != nil {
+      fmt.Println(err)
+    }
+    entr, err := proto.Marshal(protobinding)
+    if err != nil {
+      fmt.Println("Failed to Marshal protobinding,check magic or file a github issue")
+    }
+    checkfile(err, f)
+    bs := make([]byte, 4)
+    binary.LittleEndian.PutUint32(bs, uint32(len(entr)))
+    _, err = f.Write(bs)
+    checkfile(err, f)
+    _, err = f.Write(entr)
+    checkfile(err, f)
+    enty := entry.(map[string]interface{})
+    dcsdata, err := base64.StdEncoding.DecodeString(enty["extra"].(string))
+    f.Write(dcsdata)
+    checkfile(err, f)
+  }
+}
+
 func (x *tcp_stream_extra_handler) Load(f *os.File, pretty bool, nopl bool) []keyvalue {
   /*
      Convert criu image entries from binary(.img) format to json.
@@ -813,6 +1172,58 @@ func (x *tcp_stream_extra_handler) Load(f *os.File, pretty bool, nopl bool) []ke
   }
   return entries
 }
+
+func (x *tcp_stream_extra_handler) Dump(jsonmap map[string]interface{}, f *os.File) {
+  /*
+     Convert criu image entries from dict(json) format to binary.
+     Takes a list of entries and a file-like object to write entries
+     in binary format to.
+  */
+  protobinding := &protobindings.TcpStreamEntry{}
+  for _, entry := range jsonmap["entries"].([]interface{}) {
+    enty := entry.(map[string]interface{})
+    /*
+       Type switch helps in maintaining cross compatibility
+       between files generated in python and go version of crit.
+       python version generates strings,go version doesn not
+       for certain data.The Below code fixes that.
+    */
+    switch v := enty["opt_mask"].(type) {
+    case string:
+      optfix := strings.Trim(enty["opt_mask"].(string), "0x")
+      enty["opt_mask"] = optfix
+    default:
+      fmt.Printf("Unkown type,contact the dev %T!\n", v)
+    }
+    internalbmap, err := json.Marshal(enty)
+    jsonm := &jsonpb.Unmarshaler{}
+    r := bytes.NewReader(internalbmap)
+    err = jsonm.Unmarshal(r, protobinding)
+    if err != nil {
+      fmt.Println("Json unmarshlling error", err)
+    }
+    entr, err := proto.Marshal(protobinding)
+    if err != nil {
+      fmt.Println("Failed to Marshal protobinding,check magic or file a github issue")
+    }
+    checkfile(err, f)
+    bs := make([]byte, 4)
+    binary.LittleEndian.PutUint32(bs, uint32(len(entr)))
+    _, err = f.Write(bs)
+    checkfile(err, f)
+    _, err = f.Write(entr)
+    checkfile(err, f)
+    extra := enty["extra"].(map[string]interface{})
+    inq, err := base64.StdEncoding.DecodeString(extra["inq"].(string))
+    outq, err := base64.StdEncoding.DecodeString(extra["outq"].(string))
+    f.Write(inq)
+    checkfile(err, f)
+    f.Write(outq)
+    checkfile(err, f)
+  }
+  f.Close()
+}
+
 func protohandler(m string, l bool, internalrbuffer []byte) (jpb []byte, err error) {
   //var entries map[string]interface{}
   switch {
